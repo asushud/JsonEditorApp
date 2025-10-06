@@ -2,6 +2,8 @@ name: Build JsonEditor Apps
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   # 🪟 Windows Build
@@ -63,25 +65,18 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Create runtime image
-        run: |
-          jlink \
-            --module-path "$JAVA_HOME/jmods" \
-            --add-modules java.base,java.desktop,java.logging,java.xml \
-            --output jre
-
       - name: Clean output folder
         run: rm -rf output
 
       - name: Package macOS App
         run: |
+          mkdir -p output
           jpackage \
             --name JsonEditor \
             --input . \
             --main-jar JsonEditor.jar \
             --main-class JsonEditor \
-            --runtime-image jre \
-            --type app-image \
+            --type dmg \
             --app-version 1.0 \
             --java-options "-cp JsonEditor.jar:lib/*" \
             --dest output
