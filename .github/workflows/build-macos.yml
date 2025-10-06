@@ -1,0 +1,41 @@
+name: Build macOS App
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Package macOS App
+        run: |
+          mkdir -p output
+          cd JsonEditor
+          jpackage \
+            --name JsonEditor \
+            --input . \
+            --main-jar JsonEditor.jar \
+            --main-class JsonEditor \
+            --type dmg \
+            --app-version 1.0 \
+            --java-options "-cp JsonEditor.jar:lib/*" \
+            --icon icon.icns \
+            --dest ../output
+
+      - name: Upload built app
+        uses: actions/upload-artifact@v4
+        with:
+          name: JsonEditor-macOS
+          path: output/
