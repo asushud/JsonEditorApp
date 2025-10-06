@@ -1,92 +1,54 @@
-name: Build JsonEditor Apps
+name: Build JsonEditor Fat Jar
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-  # 🪟 Windows Build
-  build-windows:
+  build:
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
 
-      # 1️⃣ Compile Java files (assuming package jsoneditor)
-      - name: Compile Java files
+      - name: Create build directories
         run: |
-          mkdir build
-          javac -d build -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" jsoneditor/*.java
+          mkdir -Force jsoneditor\build
+          mkdir -Force jsoneditor\jartemp
 
-      # 2️⃣ Create fat jar
-      - name: Create fat jar
+      - name: Compile Java code
         run: |
-          mkdir fat-jar
-          Copy-Item build\* fat-jar\ -Recurse
-          
-          foreach ($jar in "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar") {
-              Write-Host "Extracting $jar"
-              $tempDir = "$env:TEMP\jartemp"
-              Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
-              mkdir $tempDir
-              [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
-              # Copy all files except META-INF
-              Get-ChildItem $tempDir -Recurse | Where-Object { $_.PSIsContainer -eq $false -and $_.FullName -notmatch "META-INF" } | Copy-Item -Destination fat-jar -Force
-              Remove-Item -Recurse -Force $tempDir
-          }
+          javac -d jsoneditor\build -cp "jsoneditor\jackson-core.jar;jsoneditor\jackson-databind.jar;jsoneditor\jackson-annotations.jar" jsoneditor\JsonEditor.java
 
-          cd fat-jar
-          jar cfe ../JsonEditor-fat.jar jsoneditor.JsonEditor *
-          cd ..
-
-      # 3️⃣ Upload fat jar artifact
-      - name: Upload Windows fat jar
-        uses: actions/upload-artifact@v4
-        with:
-          name: JsonEditor-Windows
-          path: JsonEditor-fat.jar
-
-  # 🍎 macOS Build
-  build-macos:
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      # 1️⃣ Compile Java files
-      - name: Compile Java files
-        run: javac -d build -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" jsoneditor/*.java
-
-      # 2️⃣ Create fat jar
-      - name: Create fat jar
+      - name: Extract Jackson jars
         run: |
-          mkdir fat-jar
-          cp -R build/* fat-jar/
-          for jar in jackson-core.jar jackson-databind.jar jackson-annotations.jar; do
-            unzip -q -d fat-jar $jar
-          done
-          cd fat-jar
-          jar cfe ../JsonEditor-fat.jar jsoneditor.JsonEditor *
-          cd ..
+          powershell -Command "
+            foreach ($jar in @('jackson-core.jar','jackson-databind.jar','jackson-annotations.jar')) {
+              [System.IO.Compression.ZipFile]::ExtractToDirectory('jsoneditor\\' + $jar, 'jsoneditor\\jartemp')
+            }
+          "
 
-      # 3️⃣ Upload macOS artifact
-      - name: Upload macOS fat jar
-        uses: actions/upload-artifact@v4
+      - name: Copy compiled classes to temp
+        run: |
+          xcopy jsoneditor\build\* jsoneditor\jartemp /E /I /Y
+
+      - name: Build fat jar
+        run: |
+          cd jsoneditor\jartemp
+          jar cfe ..\JsonEditor-fat.jar jsoneditor.JsonEditor *
+          cd ../..
+
+      - name: Upload fat jar artifact
+        uses: actions/upload-artifact@v3
         with:
-          name: JsonEditor-macOS
-          path: JsonEditor-fat.jar
+          name: JsonEditor-fat-jar
+          path: jsoneditor\JsonEditor-fat.jar
