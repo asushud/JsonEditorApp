@@ -20,33 +20,28 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # 1️⃣ Compile all Java files
+      # 1️⃣ Compile all Java files (verbose)
       - name: Compile Java files
+        shell: pwsh
         run: |
           mkdir build
-          javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
+          javac -verbose -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar
+      # 2️⃣ Create fat jar (verbose)
       - name: Create fat jar
         shell: pwsh
         run: |
-          # Remove old folders
           Remove-Item -Recurse -Force fat-jar -ErrorAction SilentlyContinue
           mkdir fat-jar
-
-          # Copy compiled classes
           Copy-Item build\* fat-jar\ -Recurse
 
-          # Extract dependency jars correctly
           foreach ($jar in "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar") {
               Write-Host "Extracting $jar"
               $tempDir = "$env:TEMP\jartemp"
               Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
               mkdir $tempDir
-
               [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
 
-              # Copy all .class files and package folders, skipping META-INF
               Get-ChildItem $tempDir -Recurse | Where-Object {
                   $_.PSIsContainer -or ($_.Extension -eq ".class")
               } | ForEach-Object {
@@ -60,9 +55,9 @@ jobs:
               Remove-Item -Recurse -Force $tempDir
           }
 
-          # Create final fat jar with main class
           cd fat-jar
-          jar cfe ../JsonEditor-fat.jar JsonEditor *
+          Write-Host "Creating JsonEditor-fat.jar"
+          jar -cvfe ../JsonEditor-fat.jar JsonEditor *
           cd ..
 
       # 3️⃣ Create custom runtime image
@@ -84,7 +79,7 @@ jobs:
       - name: Clean output folder
         run: Remove-Item -Recurse -Force output -ErrorAction SilentlyContinue
 
-      # 6️⃣ Package Windows EXE
+      # 6️⃣ Package Windows EXE (verbose)
       - name: Package Windows EXE
         run: |
           jpackage `
@@ -96,7 +91,8 @@ jobs:
             --type app-image `
             --win-console `
             --app-version 1.0 `
-            --dest output
+            --dest output `
+            --verbose
 
       # 7️⃣ Upload Windows artifact
       - name: Upload Windows app-image
@@ -105,7 +101,7 @@ jobs:
           name: JsonEditor-Windows
           path: output/JsonEditor
 
-   # 🍎 macOS Build
+  # 🍎 macOS Build
   build-macos:
     runs-on: macos-latest
 
@@ -119,27 +115,37 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # 1️⃣ Compile Java files
+      # 1️⃣ Compile Java files (verbose)
       - name: Compile Java files
-        run: javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
+        run: |
+          mkdir -p build
+          javac -verbose -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar
+      # 2️⃣ Create fat jar (verbose)
       - name: Create fat jar
         run: |
+          rm -rf fat-jar
           mkdir fat-jar
           cp -R build/* fat-jar/
-          jar xf jackson-core.jar
-          jar xf jackson-databind.jar
-          jar xf jackson-annotations.jar
+          
+          for jar in jackson-core.jar jackson-databind.jar jackson-annotations.jar; do
+            echo "Extracting $jar"
+            mkdir -p tmp
+            jar -xvf $jar
+            cp -R com fat-jar/
+            rm -rf tmp
+          done
+          
           cd fat-jar
-          jar cfe JsonEditor-fat.jar JsonEditor *
-          mv JsonEditor-fat.jar ../
+          echo "Creating JsonEditor-fat.jar"
+          jar -cvfe ../JsonEditor-fat.jar JsonEditor *
+          cd ..
 
       # 3️⃣ Clean output folder
       - name: Clean output folder
         run: rm -rf output
 
-      # 4️⃣ Package macOS DMG
+      # 4️⃣ Package macOS DMG (verbose)
       - name: Package macOS App
         run: |
           mkdir -p output
@@ -150,7 +156,8 @@ jobs:
             --main-class JsonEditor \
             --type dmg \
             --app-version 1.0 \
-            --dest output
+            --dest output \
+            --verbose
 
       # 5️⃣ Upload macOS artifact
       - name: Upload macOS App artifact
