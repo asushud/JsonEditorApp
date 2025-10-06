@@ -26,30 +26,21 @@ jobs:
           mkdir build
           javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar (PowerShell fix included)
+      # 2️⃣ Create fat jar (safe for Windows long paths)
       - name: Create fat jar
         shell: pwsh
         run: |
           mkdir fat-jar
           Copy-Item build\* fat-jar\ -Recurse
+          Copy-Item jackson-core.jar fat-jar\
+          Copy-Item jackson-databind.jar fat-jar\
+          Copy-Item jackson-annotations.jar fat-jar\
           cd fat-jar
-          jar xf ..\jackson-core.jar
-          jar xf ..\jackson-databind.jar
-          jar xf ..\jackson-annotations.jar
-
-          # Collect all files recursively
-          $allFiles = Get-ChildItem -Recurse | Where-Object { -not $_.PSIsContainer } | ForEach-Object { $_.FullName.Replace((Get-Location).Path + "\", "") }
-
-          # Create fat jar
-          jar cfe JsonEditor-fat.jar JsonEditor @allFiles
-
-          # Move fat jar to root
-          if (Test-Path "JsonEditor-fat.jar") {
-              Move-Item -Force JsonEditor-fat.jar ..
-              Write-Host "Fat jar created successfully!"
-          } else {
-              Write-Error "JsonEditor-fat.jar was not created!"
-          }
+          jar xf jackson-core.jar
+          jar xf jackson-databind.jar
+          jar xf jackson-annotations.jar
+          jar cfe JsonEditor-fat.jar JsonEditor .
+          Move-Item -Force JsonEditor-fat.jar ..
           cd ..
 
       # 3️⃣ Create custom runtime image
