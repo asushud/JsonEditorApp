@@ -2,8 +2,6 @@ name: Build JsonEditor Apps
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   # 🪟 Windows Build
@@ -22,23 +20,23 @@ jobs:
 
       - name: Create runtime image
         run: |
-          jlink ^
-            --module-path "%JAVA_HOME%\jmods" ^
-            --add-modules java.base,java.desktop,java.logging,java.xml ^
+          jlink `
+            --module-path "$env:JAVA_HOME\jmods" `
+            --add-modules java.base,java.desktop,java.logging,java.xml `
             --output jre
 
       - name: Package Windows EXE
         run: |
-          jpackage ^
-            --name JsonEditor ^
-            --input . ^
-            --main-jar JsonEditor.jar ^
-            --main-class JsonEditor ^
-            --runtime-image jre ^
-            --type exe ^
-            --win-console ^
-            --app-version 1.0 ^
-            --java-options "-cp JsonEditor.jar;lib/*" ^
+          jpackage `
+            --name JsonEditor `
+            --input . `
+            --main-jar JsonEditor.jar `
+            --main-class JsonEditor `
+            --runtime-image jre `
+            --type exe `
+            --win-console `
+            --app-version 1.0 `
+            --java-options "-cp JsonEditor.jar;lib/*" `
             --dest output
 
       - name: Upload EXE artifact
@@ -47,7 +45,8 @@ jobs:
           name: JsonEditor-Windows
           path: output/
 
-  # 🍏 macOS Build
+
+  # 🍎 macOS Build
   build-macos:
     runs-on: macos-latest
 
@@ -68,21 +67,20 @@ jobs:
             --add-modules java.base,java.desktop,java.logging,java.xml \
             --output jre
 
-      - name: Package macOS DMG
+      - name: Package macOS App
         run: |
-          mkdir -p output
           jpackage \
             --name JsonEditor \
             --input . \
             --main-jar JsonEditor.jar \
             --main-class JsonEditor \
             --runtime-image jre \
-            --type dmg \
+            --type app-image \
             --app-version 1.0 \
             --java-options "-cp JsonEditor.jar:lib/*" \
             --dest output
 
-      - name: Upload DMG artifact
+      - name: Upload macOS App artifact
         uses: actions/upload-artifact@v4
         with:
           name: JsonEditor-macOS
