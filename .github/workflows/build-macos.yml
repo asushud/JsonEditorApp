@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 jobs:
-  # 🪟 Windows Build
+  # 🪟 Windows Build (standalone app with embedded JRE)
   build-windows:
     runs-on: windows-latest
 
@@ -30,7 +30,7 @@ jobs:
       - name: Clean output folder
         run: Remove-Item -Recurse -Force output -ErrorAction SilentlyContinue
 
-      - name: Package Windows EXE
+      - name: Package Windows standalone app
         run: |
           jpackage `
             --name JsonEditor `
@@ -38,20 +38,20 @@ jobs:
             --main-jar JsonEditor.jar `
             --main-class JsonEditor `
             --runtime-image jre `
-            --type exe `
+            --type app-image `
             --win-console `
             --app-version 1.0 `
             --java-options "-cp JsonEditor.jar;lib/*" `
             --dest output
 
-      - name: Upload EXE artifact
+      - name: Upload Windows app-image artifact
         uses: actions/upload-artifact@v4
         with:
           name: JsonEditor-Windows
-          path: output/
+          path: output/JsonEditor
 
 
-  # 🍎 macOS Build
+  # 🍎 macOS Build (requires Java on target Mac)
   build-macos:
     runs-on: macos-latest
 
