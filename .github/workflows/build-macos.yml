@@ -20,18 +20,18 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # Compile all Java files
+      # Compile all Java files (multiple mains)
       - name: Compile Java files
         run: |
           mkdir build
           javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # Create main jar with all classes
+      # Create main jar with all classes (overwrite if exists)
       - name: Create JsonEditor.jar
         run: |
           cd build
           jar cfe JsonEditor.jar JsonEditor *
-          move JsonEditor.jar ..
+          Move-Item -Force JsonEditor.jar ..
 
       # Create custom runtime image
       - name: Create runtime image
@@ -107,10 +107,11 @@ jobs:
             --main-class JsonEditor \
             --type dmg \
             --app-version 1.0 \
-            --java-options "-cp *.jar" \
+            --java-options "-cp JsonEditor.jar:jackson-annotations.jar:jackson-core.jar:jackson-databind.jar" \
             --dest output
 
-      - name: Upload macOS artifact
+      # Upload macOS artifact
+      - name: Upload macOS App artifact
         uses: actions/upload-artifact@v4
         with:
           name: JsonEditor-macOS
