@@ -42,9 +42,16 @@ jobs:
       - name: Clean output folder
         run: Remove-Item -Recurse -Force output -ErrorAction SilentlyContinue
 
+      # Build classpath string
+      - name: Build classpath
+        id: cp
+        run: |
+          echo "::set-output name=classpath::JsonEditor.jar;jackson-annotations.jar;jackson-core.jar;jackson-databind.jar"
+
       # Package Windows standalone app
       - name: Package Windows app-image
         run: |
+          $cp = "${{ steps.cp.outputs.classpath }}"
           jpackage `
             --name JsonEditor `
             --input build-input `
@@ -54,7 +61,7 @@ jobs:
             --type app-image `
             --win-console `
             --app-version 1.0 `
-            --java-options "-cp *" `
+            --java-options "-cp $cp" `
             --dest output
 
       # Upload Windows artifact
