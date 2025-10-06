@@ -26,29 +26,27 @@ jobs:
           mkdir build
           javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar with all dependencies (FIXED)
+      # 2️⃣ Create fat jar with all dependencies (fixed)
       - name: Create fat jar
         run: |
           mkdir fat-jar
           # Copy compiled classes
           Copy-Item build\* fat-jar\ -Recurse
 
-          # Extract dependency jars safely (ignore META-INF)
+          # Extract dependency jars into separate temp folder
+          mkdir temp-jars
           foreach ($jar in "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar") {
               Write-Host "Extracting $jar"
               $tempDir = "$env:TEMP\jartemp"
               Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
               mkdir $tempDir
               [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
-              # Copy only files (not folders) and skip META-INF
-              Get-ChildItem $tempDir -Recurse | Where-Object { $_.PSIsContainer -eq $false -and $_.FullName -notmatch "META-INF" } | Copy-Item -Destination fat-jar -Force
+              Copy-Item $tempDir\* temp-jars\ -Recurse
               Remove-Item -Recurse -Force $tempDir
           }
 
-          # Create final fat jar with main class
-          cd fat-jar
-          jar cfe ../JsonEditor-fat.jar JsonEditor *
-          cd ..
+          # Create final fat jar with main class using -C to include directories
+          jar cfe JsonEditor-fat.jar JsonEditor -C fat-jar . -C temp-jars .
 
       # 3️⃣ Create custom runtime image
       - name: Create runtime image
