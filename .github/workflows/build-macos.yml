@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 jobs:
-  # 🪟 Windows Build (standalone app with embedded JRE)
+  # 🪟 Windows Build
   build-windows:
     runs-on: windows-latest
 
@@ -20,7 +20,20 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # Create custom runtime
+      # Compile all Java files
+      - name: Compile Java files
+        run: |
+          mkdir build
+          javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
+
+      # Create main jar with all classes
+      - name: Create JsonEditor.jar
+        run: |
+          cd build
+          jar cfe JsonEditor.jar JsonEditor *
+          move JsonEditor.jar ..
+
+      # Create custom runtime image
       - name: Create runtime image
         run: |
           jlink `
@@ -28,8 +41,8 @@ jobs:
             --add-modules java.base,java.desktop,java.logging,java.xml `
             --output jre
 
-      # Prepare clean input folder
-      - name: Prepare Windows input folder
+      # Prepare input folder
+      - name: Prepare input folder
         run: |
           Remove-Item -Recurse -Force build-input -ErrorAction SilentlyContinue
           mkdir build-input
@@ -42,16 +55,10 @@ jobs:
       - name: Clean output folder
         run: Remove-Item -Recurse -Force output -ErrorAction SilentlyContinue
 
-      # Build classpath string
-      - name: Build classpath
-        id: cp
+      # Package Windows EXE
+      - name: Package Windows EXE
         run: |
-          echo "::set-output name=classpath::JsonEditor.jar;jackson-annotations.jar;jackson-core.jar;jackson-databind.jar"
-
-      # Package Windows standalone app
-      - name: Package Windows app-image
-        run: |
-          $cp = "${{ steps.cp.outputs.classpath }}"
+          $cp = "JsonEditor.jar;jackson-annotations.jar;jackson-core.jar;jackson-databind.jar"
           jpackage `
             --name JsonEditor `
             --input build-input `
@@ -71,8 +78,7 @@ jobs:
           name: JsonEditor-Windows
           path: output/JsonEditor
 
-
-  # 🍎 macOS Build (requires Java on target Mac)
+  # 🍎 macOS Build
   build-macos:
     runs-on: macos-latest
 
@@ -86,9 +92,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # Clean output folder
       - name: Clean output folder
         run: rm -rf output
 
+      # Package macOS DMG
       - name: Package macOS App
         run: |
           mkdir -p output
