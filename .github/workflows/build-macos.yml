@@ -33,19 +33,16 @@ jobs:
           # Copy compiled classes
           Copy-Item build\* fat-jar\ -Recurse
 
-          # Extract dependency jars safely (ignore META-INF/MANIFEST.MF)
+          # Extract dependency jars safely (ignore META-INF)
           foreach ($jar in "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar") {
               Write-Host "Extracting $jar"
-              $zip = [System.IO.Compression.ZipFile]::OpenRead($jar)
-              foreach ($entry in $zip.Entries) {
-                  if (-not $entry.FullName.StartsWith("META-INF/")) {
-                      $dest = Join-Path fat-jar $entry.FullName
-                      $dir = Split-Path $dest
-                      if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-                      $entry.ExtractToFile($dest, $true)
-                  }
-              }
-              $zip.Dispose()
+              $tempDir = "$env:TEMP\jartemp"
+              Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
+              mkdir $tempDir
+              [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
+              # Copy only files outside META-INF
+              Get-ChildItem $tempDir -Recurse | Where-Object { $_.FullName -notmatch "META-INF" } | Copy-Item -Destination fat-jar -Recurse -Force
+              Remove-Item -Recurse -Force $tempDir
           }
 
           # Create final fat jar with main class
