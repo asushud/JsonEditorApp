@@ -105,7 +105,7 @@ jobs:
           name: JsonEditor-Windows
           path: output/JsonEditor
 
-  # 🍎 macOS Build
+   # 🍎 macOS Build
   build-macos:
     runs-on: macos-latest
 
@@ -126,21 +126,14 @@ jobs:
       # 2️⃣ Create fat jar
       - name: Create fat jar
         run: |
-          rm -rf fat-jar
           mkdir fat-jar
           cp -R build/* fat-jar/
-
-          # Extract jars
-          for jar in jackson-core.jar jackson-databind.jar jackson-annotations.jar; do
-            mkdir -p temp-jars
-            unzip -q $jar -d temp-jars
-            cp -R temp-jars/* fat-jar/
-            rm -rf temp-jars
-          done
-
+          jar xf jackson-core.jar
+          jar xf jackson-databind.jar
+          jar xf jackson-annotations.jar
           cd fat-jar
-          jar cfe ../JsonEditor-fat.jar JsonEditor *
-          cd ..
+          jar cfe JsonEditor-fat.jar JsonEditor *
+          mv JsonEditor-fat.jar ../
 
       # 3️⃣ Clean output folder
       - name: Clean output folder
