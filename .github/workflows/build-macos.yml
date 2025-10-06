@@ -20,6 +20,7 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # Create custom runtime
       - name: Create runtime image
         run: |
           jlink `
@@ -27,24 +28,37 @@ jobs:
             --add-modules java.base,java.desktop,java.logging,java.xml `
             --output jre
 
+      # Prepare clean input folder
+      - name: Prepare Windows input folder
+        run: |
+          Remove-Item -Recurse -Force build-input -ErrorAction SilentlyContinue
+          mkdir build-input
+          Copy-Item JsonEditor.jar build-input\
+          Copy-Item jackson-annotations.jar build-input\
+          Copy-Item jackson-core.jar build-input\
+          Copy-Item jackson-databind.jar build-input\
+
+      # Clean output folder
       - name: Clean output folder
         run: Remove-Item -Recurse -Force output -ErrorAction SilentlyContinue
 
-      - name: Package Windows standalone app
+      # Package Windows standalone app
+      - name: Package Windows app-image
         run: |
           jpackage `
             --name JsonEditor `
-            --input . `
+            --input build-input `
             --main-jar JsonEditor.jar `
             --main-class JsonEditor `
             --runtime-image jre `
             --type app-image `
             --win-console `
             --app-version 1.0 `
-            --java-options "-cp JsonEditor.jar;lib/*" `
+            --java-options "-cp *" `
             --dest output
 
-      - name: Upload Windows app-image artifact
+      # Upload Windows artifact
+      - name: Upload Windows app-image
         uses: actions/upload-artifact@v4
         with:
           name: JsonEditor-Windows
@@ -78,10 +92,10 @@ jobs:
             --main-class JsonEditor \
             --type dmg \
             --app-version 1.0 \
-            --java-options "-cp JsonEditor.jar:lib/*" \
+            --java-options "-cp *.jar" \
             --dest output
 
-      - name: Upload macOS App artifact
+      - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: JsonEditor-macOS
