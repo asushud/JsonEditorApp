@@ -1,163 +1,62 @@
-name: Build JsonEditor Apps
+name: Build JsonEditor Fat Jar
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-  # 🪟 Windows Build
-  build-windows:
+  build:
     runs-on: windows-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      # 1️⃣ Compile Java files
-      - name: Compile Java files
-        run: |
-          mkdir build
-          javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
-
-      # 2️⃣ Create fat jar with proper extraction
-      - name: Create fat jar
-        shell: pwsh
-        run: |
-          Remove-Item -Recurse -Force fat-jar -ErrorAction SilentlyContinue
-          mkdir fat-jar
-
-          # Copy compiled classes
-          Copy-Item build\* fat-jar\ -Recurse
-
-          # Extract dependencies without extra folders
-          foreach ($jar in "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar") {
-              Write-Host "Extracting $jar"
-              $tempDir = "$env:TEMP\jartemp"
-              Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
-              mkdir $tempDir
-              [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
-
-              Get-ChildItem $tempDir -Recurse | Where-Object {
-                  $_.PSIsContainer -or ($_.Extension -eq ".class")
-              } | ForEach-Object {
-                  $relative = $_.FullName.Substring($tempDir.Length + 1) -replace '^mp\\',''
-                  $dest = Join-Path fat-jar $relative
-                  $destDir = Split-Path $dest -Parent
-                  if (-not (Test-Path $destDir)) { mkdir $destDir }
-                  Copy-Item $_.FullName $dest -Force
-              }
-
-              Remove-Item -Recurse -Force $tempDir
-          }
-
-          # Create final fat jar
-          cd fat-jar
-          jar cfe ../JsonEditor-fat.jar JsonEditor *
-          cd ..
-
-      # 3️⃣ Create custom runtime image
-      - name: Create runtime image
-        run: |
-          jlink `
-            --module-path "$env:JAVA_HOME\jmods" `
-            --add-modules java.base,java.desktop,java.logging,java.xml `
-            --output jre
-
-      # 4️⃣ Prepare input folder for jpackage
-      - name: Prepare input folder
-        run: |
-          Remove-Item -Recurse -Force build-input -ErrorAction SilentlyContinue
-          mkdir build-input
-          Copy-Item JsonEditor-fat.jar build-input\
-
-      # 5️⃣ Clean output folder
-      - name: Clean output folder
-        run: Remove-Item -Recurse -Force output -ErrorAction SilentlyContinue
-
-      # 6️⃣ Package Windows EXE
-      - name: Package Windows EXE
-        run: |
-          jpackage `
-            --name JsonEditor `
-            --input build-input `
-            --main-jar JsonEditor-fat.jar `
-            --main-class JsonEditor `
-            --runtime-image jre `
-            --type app-image `
-            --win-console `
-            --app-version 1.0 `
-            --dest output
-
-      # 7️⃣ Upload Windows artifact
-      - name: Upload Windows app-image
-        uses: actions/upload-artifact@v4
-        with:
-          name: JsonEditor-Windows
-          path: output/JsonEditor
-
-  # 🍎 macOS Build
-  build-macos:
-    runs-on: macos-latest
+    env:
+      JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.8-9.0\x64
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
+    - name: Setup Java
+      uses: actions/setup-java@v3
+      with:
+        java-version: '21'
+        distribution: 'temurin'
 
-      # 1️⃣ Compile Java files
-      - name: Compile Java files
-        run: javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
+    - name: Create build folder
+      run: mkdir build
 
-      # 2️⃣ Create fat jar
-      - name: Create fat jar
-        run: |
-          rm -rf fat-jar
-          mkdir fat-jar
-          cp -R build/* fat-jar/
+    - name: Compile Java sources
+      run: javac -d build -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" src/jsoneditor/*.java
 
-          for jar in jackson-core.jar jackson-databind.jar jackson-annotations.jar; do
-            tempDir=$(mktemp -d)
-            unzip -q "$jar" -d "$tempDir"
-            find "$tempDir" -name '*.class' -exec cp --parents {} fat-jar/ \;
-            rm -rf "$tempDir"
-          done
+    - name: Create fat jar folder
+      run: mkdir fat-jar
 
-          cd fat-jar
-          jar cfe ../JsonEditor-fat.jar JsonEditor *
-          cd ..
+    - name: Copy compiled classes to fat-jar
+      run: Copy-Item build\* fat-jar\ -Recurse
 
-      # 3️⃣ Clean output folder
-      - name: Clean output folder
-        run: rm -rf output
+    - name: Extract dependencies into fat-jar
+      run: |
+        $jars = "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar"
+        foreach ($jar in $jars) {
+            Write-Host "Extracting $jar"
+            $tempDir = "$env:TEMP\jartemp"
+            Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
+            mkdir $tempDir
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
+            # Copy only .class files and flatten folder structure
+            Get-ChildItem $tempDir -Recurse -Include *.class | Copy-Item -Destination fat-jar -Force
+            Remove-Item -Recurse -Force $tempDir
+        }
 
-      # 4️⃣ Package macOS DMG
-      - name: Package macOS App
-        run: |
-          mkdir -p output
-          jpackage \
-            --name JsonEditor \
-            --input . \
-            --main-jar JsonEditor-fat.jar \
-            --main-class JsonEditor \
-            --type dmg \
-            --app-version 1.0 \
-            --dest output
+    - name: Build final fat jar
+      run: |
+        cd fat-jar
+        jar cfe ../JsonEditor-fat.jar jsoneditor.JsonEditor *
+        cd ..
 
-      # 5️⃣ Upload macOS artifact
-      - name: Upload macOS App artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: JsonEditor-macOS
-          path: output/
+    - name: List fat jar contents
+      run: jar tf JsonEditor-fat.jar
+
+    - name: Test running fat jar
+      run: java -jar JsonEditor-fat.jar
