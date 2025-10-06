@@ -105,60 +105,56 @@ jobs:
           name: JsonEditor-Windows
           path: output/JsonEditor
 
-  # 🍎 macOS Build
-build-macos:
-  runs-on: macos-latest
+   # 🍎 macOS Build
+  build-macos:
+    runs-on: macos-latest
 
-  steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up JDK 21
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 21
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
 
-    # 1️⃣ Compile Java files
-    - name: Compile Java files
-      run: javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
+      # 1️⃣ Compile Java files
+      - name: Compile Java files
+        run: javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
 
-    # 2️⃣ Create fat jar
-    - name: Create fat jar
-      run: |
-        mkdir fat-jar
-        # Copy compiled classes
-        cp -R build/* fat-jar/
-        # Extract Jackson jars into fat-jar
-        cd fat-jar
-        for jar in ../jackson-core.jar ../jackson-databind.jar ../jackson-annotations.jar; do
-          jar xf "$jar"
-        done
-        # Build final fat jar
-        jar cfe JsonEditor-fat.jar JsonEditor *
-        mv JsonEditor-fat.jar ../
-        cd ..
+      # 2️⃣ Create fat jar
+      - name: Create fat jar
+        run: |
+          mkdir fat-jar
+          cp -R build/* fat-jar/
+          jar xf jackson-core.jar
+          jar xf jackson-databind.jar
+          jar xf jackson-annotations.jar
+          cd fat-jar
+          jar cfe JsonEditor-fat.jar JsonEditor *
+          mv JsonEditor-fat.jar ../
 
-    # 3️⃣ Clean output folder
-    - name: Clean output folder
-      run: rm -rf output
+      # 3️⃣ Clean output folder
+      - name: Clean output folder
+        run: rm -rf output
 
-    # 4️⃣ Package macOS DMG
-    - name: Package macOS App
-      run: |
-        mkdir -p output
-        jpackage \
-          --name JsonEditor \
-          --input . \
-          --main-jar JsonEditor-fat.jar \
-          --main-class JsonEditor \
-          --type dmg \
-          --app-version 1.0 \
-          --dest output
+      # 4️⃣ Package macOS DMG
+      - name: Package macOS App
+        run: |
+          mkdir -p output
+          jpackage \
+            --name JsonEditor \
+            --input . \
+            --main-jar JsonEditor-fat.jar \
+            --main-class JsonEditor \
+            --type dmg \
+            --app-version 1.0 \
+            --dest output
 
-    # 5️⃣ Upload macOS artifact
-    - name: Upload macOS App artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: JsonEditor-macOS
-        path: output/
+      # 5️⃣ Upload macOS artifact
+      - name: Upload macOS App artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JsonEditor-macOS
+          path: output/
