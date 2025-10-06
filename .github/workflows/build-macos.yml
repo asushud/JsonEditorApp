@@ -1,4 +1,4 @@
-name: Build JsonEditor Apps
+name: Build JsonEditor Native macOS App
 
 on:
   workflow_dispatch:
@@ -6,162 +6,54 @@ on:
     branches: [ main ]
 
 jobs:
-  # 🪟 Windows Build
-  build-windows:
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      # 1️⃣ Compile all Java files (verbose)
-      - name: Compile Java files
-        shell: pwsh
-        run: |
-          mkdir build
-          javac -verbose -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
-
-      # 2️⃣ Create fat jar (verbose)
-      - name: Create fat jar
-        shell: pwsh
-        run: |
-          Remove-Item -Recurse -Force fat-jar -ErrorAction SilentlyContinue
-          mkdir fat-jar
-          Copy-Item build\* fat-jar\ -Recurse
-
-          foreach ($jar in "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar") {
-              Write-Host "Extracting $jar"
-              $tempDir = "$env:TEMP\jartemp"
-              Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
-              mkdir $tempDir
-              [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
-
-              Get-ChildItem $tempDir -Recurse | Where-Object {
-                  $_.PSIsContainer -or ($_.Extension -eq ".class")
-              } | ForEach-Object {
-                  $relative = $_.FullName.Substring($tempDir.Length+1)
-                  $dest = Join-Path fat-jar $relative
-                  $destDir = Split-Path $dest -Parent
-                  if (-not (Test-Path $destDir)) { mkdir $destDir }
-                  Copy-Item $_.FullName $dest -Force
-              }
-
-              Remove-Item -Recurse -Force $tempDir
-          }
-
-          cd fat-jar
-          Write-Host "Creating JsonEditor-fat.jar"
-          jar -cvfe ../JsonEditor-fat.jar JsonEditor *
-          cd ..
-
-      # 3️⃣ Create custom runtime image
-      - name: Create runtime image
-        run: |
-          jlink `
-            --module-path "$env:JAVA_HOME\jmods" `
-            --add-modules java.base,java.desktop,java.logging,java.xml `
-            --output jre
-
-      # 4️⃣ Prepare input folder for jpackage
-      - name: Prepare input folder
-        run: |
-          Remove-Item -Recurse -Force build-input -ErrorAction SilentlyContinue
-          mkdir build-input
-          Copy-Item JsonEditor-fat.jar build-input\
-
-      # 5️⃣ Clean output folder
-      - name: Clean output folder
-        run: Remove-Item -Recurse -Force output -ErrorAction SilentlyContinue
-
-      # 6️⃣ Package Windows EXE (verbose)
-      - name: Package Windows EXE
-        run: |
-          jpackage `
-            --name JsonEditor `
-            --input build-input `
-            --main-jar JsonEditor-fat.jar `
-            --main-class JsonEditor `
-            --runtime-image jre `
-            --type app-image `
-            --win-console `
-            --app-version 1.0 `
-            --dest output `
-            --verbose
-
-      # 7️⃣ Upload Windows artifact
-      - name: Upload Windows app-image
-        uses: actions/upload-artifact@v4
-        with:
-          name: JsonEditor-Windows
-          path: output/JsonEditor
-
-  # 🍎 macOS Build
-  build-macos:
+  build-macos-native:
     runs-on: macos-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - name: Set up GraalVM JDK 21
+        uses: graalvm/setup-graalvm@v1
         with:
-          distribution: temurin
           java-version: 21
+          distribution: graalvm
+          components: native-image
 
-      # 1️⃣ Compile Java files (verbose)
-      - name: Compile Java files
+      - name: Verify Java and GraalVM
+        run: |
+          java -version
+          gu --version
+
+      # 🧩 Compile Java sources
+      - name: Compile Java
         run: |
           mkdir -p build
-          javac -verbose -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
+          javac -cp "jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar (verbose)
-      - name: Create fat jar
+      # 📦 Create a jar
+      - name: Create jar
         run: |
-          rm -rf fat-jar
-          mkdir fat-jar
-          cp -R build/* fat-jar/
-          
-          for jar in jackson-core.jar jackson-databind.jar jackson-annotations.jar; do
-            echo "Extracting $jar"
-            mkdir -p tmp
-            jar -xvf $jar
-            cp -R com fat-jar/
-            rm -rf tmp
-          done
-          
-          cd fat-jar
-          echo "Creating JsonEditor-fat.jar"
-          jar -cvfe ../JsonEditor-fat.jar JsonEditor *
-          cd ..
+          jar cfe JsonEditor.jar JsonEditor -C build .
 
-      # 3️⃣ Clean output folder
-      - name: Clean output folder
-        run: rm -rf output
+      # 🚀 Build native image
+      - name: Build native executable using GraalVM
+        run: |
+          native-image \
+            --no-fallback \
+            --initialize-at-build-time \
+            -jar JsonEditor.jar \
+            JsonEditor
 
-      # 4️⃣ Package macOS DMG (verbose)
-      - name: Package macOS App
+      # 📁 Prepare output
+      - name: Prepare artifact
         run: |
           mkdir -p output
-          jpackage \
-            --name JsonEditor \
-            --input . \
-            --main-jar JsonEditor-fat.jar \
-            --main-class JsonEditor \
-            --type dmg \
-            --app-version 1.0 \
-            --dest output \
-            --verbose
+          mv JsonEditor output/
 
-      # 5️⃣ Upload macOS artifact
-      - name: Upload macOS App artifact
+      # ⬆️ Upload artifact
+      - name: Upload macOS binary
         uses: actions/upload-artifact@v4
         with:
-          name: JsonEditor-macOS
+          name: JsonEditor-macOS-Native
           path: output/
