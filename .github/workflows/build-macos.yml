@@ -26,8 +26,9 @@ jobs:
           mkdir build
           javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar (fixed)
+      # 2️⃣ Create fat jar (fixed for PowerShell)
       - name: Create fat jar
+        shell: pwsh
         run: |
           mkdir fat-jar
           Copy-Item build\* fat-jar\ -Recurse
@@ -36,7 +37,11 @@ jobs:
           jar xf ..\jackson-databind.jar
           jar xf ..\jackson-annotations.jar
           jar cfe JsonEditor-fat.jar JsonEditor .
-          Move-Item -Force JsonEditor-fat.jar ..
+          if (Test-Path "JsonEditor-fat.jar") {
+              Move-Item -Force JsonEditor-fat.jar ..
+          } else {
+              Write-Error "JsonEditor-fat.jar was not created!"
+          }
           Set-Location ..
 
       # 3️⃣ Create custom runtime image
@@ -101,15 +106,14 @@ jobs:
       # 2️⃣ Create fat jar
       - name: Create fat jar
         run: |
-          mkdir -p fat-jar
+          mkdir fat-jar
           cp -R build/* fat-jar/
+          jar xf jackson-core.jar
+          jar xf jackson-databind.jar
+          jar xf jackson-annotations.jar
           cd fat-jar
-          jar xf ../jackson-core.jar
-          jar xf ../jackson-databind.jar
-          jar xf ../jackson-annotations.jar
-          jar cfe JsonEditor-fat.jar JsonEditor .
+          jar cfe JsonEditor-fat.jar JsonEditor *
           mv JsonEditor-fat.jar ../
-          cd ..
 
       # 3️⃣ Clean output folder
       - name: Clean output folder
