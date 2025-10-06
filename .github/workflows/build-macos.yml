@@ -20,34 +20,41 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # 1️⃣ Compile all Java files (multiple mains)
+      # 1️⃣ Compile all Java files
       - name: Compile Java files
         run: |
           mkdir build
           javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar with all dependencies (fixed)
+      # 2️⃣ Create fat jar
       - name: Create fat jar
+        shell: pwsh
         run: |
+          # Remove old folders
+          Remove-Item -Recurse -Force fat-jar -ErrorAction SilentlyContinue
           mkdir fat-jar
 
           # Copy compiled classes
           Copy-Item build\* fat-jar\ -Recurse
 
-          # Extract dependencies and flatten
+          # Extract dependency jars correctly
           foreach ($jar in "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar") {
               Write-Host "Extracting $jar"
               $tempDir = "$env:TEMP\jartemp"
               Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
               mkdir $tempDir
+
               [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
 
-              # Copy all .class files to fat-jar root, skipping META-INF/versions
-              Get-ChildItem $tempDir -Recurse -Filter *.class | Where-Object { $_.FullName -notmatch 'META-INF\\versions' } | ForEach-Object {
-                  $relativePath = $_.FullName.Substring($tempDir.Length+1)
-                  $destPath = Join-Path fat-jar $relativePath
-                  mkdir (Split-Path $destPath) -ErrorAction SilentlyContinue
-                  Copy-Item $_.FullName $destPath -Force
+              # Copy all .class files and package folders, skipping META-INF
+              Get-ChildItem $tempDir -Recurse | Where-Object {
+                  $_.PSIsContainer -or ($_.Extension -eq ".class")
+              } | ForEach-Object {
+                  $relative = $_.FullName.Substring($tempDir.Length+1)
+                  $dest = Join-Path fat-jar $relative
+                  $destDir = Split-Path $dest -Parent
+                  if (-not (Test-Path $destDir)) { mkdir $destDir }
+                  Copy-Item $_.FullName $dest -Force
               }
 
               Remove-Item -Recurse -Force $tempDir
@@ -55,7 +62,7 @@ jobs:
 
           # Create final fat jar with main class
           cd fat-jar
-          jar cfe ../JsonEditor-fat.jar JsonEditor .
+          jar cfe ../JsonEditor-fat.jar JsonEditor *
           cd ..
 
       # 3️⃣ Create custom runtime image
@@ -116,23 +123,23 @@ jobs:
       - name: Compile Java files
         run: javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar (fixed)
+      # 2️⃣ Create fat jar
       - name: Create fat jar
         run: |
+          rm -rf fat-jar
           mkdir fat-jar
           cp -R build/* fat-jar/
 
-          # Extract dependencies and flatten
+          # Extract jars
           for jar in jackson-core.jar jackson-databind.jar jackson-annotations.jar; do
-            echo "Extracting $jar"
-            tempDir=$(mktemp -d)
-            unzip -q $jar -d $tempDir
-            find $tempDir -type f -name "*.class" ! -path "*/META-INF/versions/*" -exec cp --parents {} fat-jar/ \;
-            rm -rf $tempDir
+            mkdir -p temp-jars
+            unzip -q $jar -d temp-jars
+            cp -R temp-jars/* fat-jar/
+            rm -rf temp-jars
           done
 
           cd fat-jar
-          jar cfe ../JsonEditor-fat.jar JsonEditor .
+          jar cfe ../JsonEditor-fat.jar JsonEditor *
           cd ..
 
       # 3️⃣ Clean output folder
