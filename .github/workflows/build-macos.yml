@@ -22,7 +22,6 @@ jobs:
       - name: Package macOS App
         run: |
           mkdir -p output
-          cd JsonEditor
           jpackage \
             --name JsonEditor \
             --input . \
@@ -32,7 +31,7 @@ jobs:
             --app-version 1.0 \
             --java-options "-cp JsonEditor.jar:lib/*" \
             --icon icon.icns \
-            --dest ../output
+            --dest output
 
       - name: Upload built app
         uses: actions/upload-artifact@v4
