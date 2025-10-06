@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 jobs:
-  # 🪟 Windows Build
+  # 🪟 Windows Build (standalone app with embedded JRE)
   build-windows:
     runs-on: windows-latest
 
@@ -26,17 +26,18 @@ jobs:
           mkdir build
           javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar using jar xf (safe merge)
+      # 2️⃣ Create fat jar (fixed)
       - name: Create fat jar
         run: |
           mkdir fat-jar
           Copy-Item build\* fat-jar\ -Recurse
-          cd fat-jar
+          Set-Location fat-jar
           jar xf ..\jackson-core.jar
           jar xf ..\jackson-databind.jar
           jar xf ..\jackson-annotations.jar
-          jar cfe JsonEditor-fat.jar JsonEditor *
+          jar cfe JsonEditor-fat.jar JsonEditor .
           Move-Item -Force JsonEditor-fat.jar ..
+          Set-Location ..
 
       # 3️⃣ Create custom runtime image
       - name: Create runtime image
@@ -78,6 +79,7 @@ jobs:
           name: JsonEditor-Windows
           path: output/JsonEditor
 
+
   # 🍎 macOS Build
   build-macos:
     runs-on: macos-latest
@@ -99,14 +101,15 @@ jobs:
       # 2️⃣ Create fat jar
       - name: Create fat jar
         run: |
-          mkdir fat-jar
+          mkdir -p fat-jar
           cp -R build/* fat-jar/
           cd fat-jar
           jar xf ../jackson-core.jar
           jar xf ../jackson-databind.jar
           jar xf ../jackson-annotations.jar
-          jar cfe JsonEditor-fat.jar JsonEditor *
+          jar cfe JsonEditor-fat.jar JsonEditor .
           mv JsonEditor-fat.jar ../
+          cd ..
 
       # 3️⃣ Clean output folder
       - name: Clean output folder
