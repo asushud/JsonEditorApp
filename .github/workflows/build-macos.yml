@@ -20,7 +20,7 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # 1️⃣ Compile all Java files (multiple mains)
+      # 1️⃣ Compile Java files
       - name: Compile Java files
         run: |
           mkdir build
@@ -31,11 +31,13 @@ jobs:
         run: |
           mkdir fat-jar
           Copy-Item build\* fat-jar\ -Recurse
-          # Extract all dependency jars into fat-jar folder
-          jar xf jackson-core.jar
-          jar xf jackson-databind.jar
-          jar xf jackson-annotations.jar
-          # Create final fat jar with main class
+
+          # Extract Jackson jars into fat-jar folder
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::ExtractToDirectory("jackson-core.jar","fat-jar")
+          [System.IO.Compression.ZipFile]::ExtractToDirectory("jackson-databind.jar","fat-jar")
+          [System.IO.Compression.ZipFile]::ExtractToDirectory("jackson-annotations.jar","fat-jar")
+
           cd fat-jar
           jar cfe JsonEditor-fat.jar JsonEditor *
           Move-Item -Force JsonEditor-fat.jar ..
