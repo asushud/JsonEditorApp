@@ -20,20 +20,27 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # Compile all Java files (multiple mains)
+      # 1️⃣ Compile all Java files (multiple mains)
       - name: Compile Java files
         run: |
           mkdir build
           javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # Create main jar with all classes (overwrite if exists)
-      - name: Create JsonEditor.jar
+      # 2️⃣ Create fat jar with all dependencies
+      - name: Create fat jar
         run: |
-          cd build
-          jar cfe JsonEditor.jar JsonEditor *
-          Move-Item -Force JsonEditor.jar ..
+          mkdir fat-jar
+          Copy-Item build\* fat-jar\ -Recurse
+          # Extract all dependency jars into fat-jar folder
+          jar xf jackson-core.jar
+          jar xf jackson-databind.jar
+          jar xf jackson-annotations.jar
+          # Create final fat jar with main class
+          cd fat-jar
+          jar cfe JsonEditor-fat.jar JsonEditor *
+          Move-Item -Force JsonEditor-fat.jar ..
 
-      # Create custom runtime image
+      # 3️⃣ Create custom runtime image
       - name: Create runtime image
         run: |
           jlink `
@@ -41,37 +48,32 @@ jobs:
             --add-modules java.base,java.desktop,java.logging,java.xml `
             --output jre
 
-      # Prepare input folder
+      # 4️⃣ Prepare input folder for jpackage
       - name: Prepare input folder
         run: |
           Remove-Item -Recurse -Force build-input -ErrorAction SilentlyContinue
           mkdir build-input
-          Copy-Item JsonEditor.jar build-input\
-          Copy-Item jackson-annotations.jar build-input\
-          Copy-Item jackson-core.jar build-input\
-          Copy-Item jackson-databind.jar build-input\
+          Copy-Item JsonEditor-fat.jar build-input\
 
-      # Clean output folder
+      # 5️⃣ Clean output folder
       - name: Clean output folder
         run: Remove-Item -Recurse -Force output -ErrorAction SilentlyContinue
 
-      # Package Windows EXE
+      # 6️⃣ Package Windows EXE
       - name: Package Windows EXE
         run: |
-          $cp = "JsonEditor.jar;jackson-annotations.jar;jackson-core.jar;jackson-databind.jar"
           jpackage `
             --name JsonEditor `
             --input build-input `
-            --main-jar JsonEditor.jar `
+            --main-jar JsonEditor-fat.jar `
             --main-class JsonEditor `
             --runtime-image jre `
             --type app-image `
             --win-console `
             --app-version 1.0 `
-            --java-options "-cp $cp" `
             --dest output
 
-      # Upload Windows artifact
+      # 7️⃣ Upload Windows artifact
       - name: Upload Windows app-image
         uses: actions/upload-artifact@v4
         with:
@@ -92,25 +94,40 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # Clean output folder
+      # 1️⃣ Compile Java files
+      - name: Compile Java files
+        run: javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
+
+      # 2️⃣ Create fat jar
+      - name: Create fat jar
+        run: |
+          mkdir fat-jar
+          cp -R build/* fat-jar/
+          jar xf jackson-core.jar
+          jar xf jackson-databind.jar
+          jar xf jackson-annotations.jar
+          cd fat-jar
+          jar cfe JsonEditor-fat.jar JsonEditor *
+          mv JsonEditor-fat.jar ../
+
+      # 3️⃣ Clean output folder
       - name: Clean output folder
         run: rm -rf output
 
-      # Package macOS DMG
+      # 4️⃣ Package macOS DMG
       - name: Package macOS App
         run: |
           mkdir -p output
           jpackage \
             --name JsonEditor \
             --input . \
-            --main-jar JsonEditor.jar \
+            --main-jar JsonEditor-fat.jar \
             --main-class JsonEditor \
             --type dmg \
             --app-version 1.0 \
-            --java-options "-cp JsonEditor.jar:jackson-annotations.jar:jackson-core.jar:jackson-databind.jar" \
             --dest output
 
-      # Upload macOS artifact
+      # 5️⃣ Upload macOS artifact
       - name: Upload macOS App artifact
         uses: actions/upload-artifact@v4
         with:
