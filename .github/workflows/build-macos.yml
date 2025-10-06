@@ -30,26 +30,27 @@ jobs:
       - name: Create fat jar
         run: |
           mkdir fat-jar
+          # Copy compiled classes
           Copy-Item build\* fat-jar\ -Recurse
 
-          # Copy all dependency jars into fat-jar
-          Copy-Item jackson-core.jar fat-jar\
-          Copy-Item jackson-databind.jar fat-jar\
-          Copy-Item jackson-annotations.jar fat-jar\
-
-          # Go into fat-jar folder
-          cd fat-jar
-
-          # Extract all dependency jars
+          # Extract dependency jars safely (ignore META-INF/MANIFEST.MF)
           foreach ($jar in "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar") {
-            jar xf $jar
+              Write-Host "Extracting $jar"
+              $zip = [System.IO.Compression.ZipFile]::OpenRead($jar)
+              foreach ($entry in $zip.Entries) {
+                  if (-not $entry.FullName.StartsWith("META-INF/")) {
+                      $dest = Join-Path fat-jar $entry.FullName
+                      $dir = Split-Path $dest
+                      if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+                      $entry.ExtractToFile($dest, $true)
+                  }
+              }
+              $zip.Dispose()
           }
 
-          # Create final fat jar
-          jar cfe JsonEditor-fat.jar JsonEditor -C . .
-
-          # Move fat jar back to root
-          Move-Item -Force JsonEditor-fat.jar ..
+          # Create final fat jar with main class
+          cd fat-jar
+          jar cfe JsonEditor-fat.jar JsonEditor *
           cd ..
 
       # 3️⃣ Create custom runtime image
