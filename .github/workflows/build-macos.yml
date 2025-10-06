@@ -20,37 +20,34 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # 1️⃣ Compile all Java files
+      # 1️⃣ Compile Java files
       - name: Compile Java files
         run: |
           mkdir build
           javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar
+      # 2️⃣ Create fat jar with proper extraction
       - name: Create fat jar
         shell: pwsh
         run: |
-          # Remove old folders
           Remove-Item -Recurse -Force fat-jar -ErrorAction SilentlyContinue
           mkdir fat-jar
 
           # Copy compiled classes
           Copy-Item build\* fat-jar\ -Recurse
 
-          # Extract dependency jars correctly
+          # Extract dependencies without extra folders
           foreach ($jar in "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar") {
               Write-Host "Extracting $jar"
               $tempDir = "$env:TEMP\jartemp"
               Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
               mkdir $tempDir
-
               [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
 
-              # Copy all .class files and package folders, skipping META-INF
               Get-ChildItem $tempDir -Recurse | Where-Object {
                   $_.PSIsContainer -or ($_.Extension -eq ".class")
               } | ForEach-Object {
-                  $relative = $_.FullName.Substring($tempDir.Length+1)
+                  $relative = $_.FullName.Substring($tempDir.Length + 1) -replace '^mp\\',''
                   $dest = Join-Path fat-jar $relative
                   $destDir = Split-Path $dest -Parent
                   if (-not (Test-Path $destDir)) { mkdir $destDir }
@@ -60,7 +57,7 @@ jobs:
               Remove-Item -Recurse -Force $tempDir
           }
 
-          # Create final fat jar with main class
+          # Create final fat jar
           cd fat-jar
           jar cfe ../JsonEditor-fat.jar JsonEditor *
           cd ..
@@ -130,12 +127,11 @@ jobs:
           mkdir fat-jar
           cp -R build/* fat-jar/
 
-          # Extract jars
           for jar in jackson-core.jar jackson-databind.jar jackson-annotations.jar; do
-            mkdir -p temp-jars
-            unzip -q $jar -d temp-jars
-            cp -R temp-jars/* fat-jar/
-            rm -rf temp-jars
+            tempDir=$(mktemp -d)
+            unzip -q "$jar" -d "$tempDir"
+            find "$tempDir" -name '*.class' -exec cp --parents {} fat-jar/ \;
+            rm -rf "$tempDir"
           done
 
           cd fat-jar
