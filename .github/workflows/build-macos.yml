@@ -30,7 +30,6 @@ jobs:
             --type dmg \
             --app-version 1.0 \
             --java-options "-cp JsonEditor.jar:lib/*" \
-            --icon icon.icns \
             --dest output
 
       - name: Upload built app
