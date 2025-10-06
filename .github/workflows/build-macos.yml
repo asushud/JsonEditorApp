@@ -40,14 +40,14 @@ jobs:
               Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
               mkdir $tempDir
               [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
-              # Copy only files outside META-INF
-              Get-ChildItem $tempDir -Recurse | Where-Object { $_.FullName -notmatch "META-INF" } | Copy-Item -Destination fat-jar -Recurse -Force
+              # Copy only files (not folders) and skip META-INF
+              Get-ChildItem $tempDir -Recurse | Where-Object { $_.PSIsContainer -eq $false -and $_.FullName -notmatch "META-INF" } | Copy-Item -Destination fat-jar -Force
               Remove-Item -Recurse -Force $tempDir
           }
 
           # Create final fat jar with main class
           cd fat-jar
-          jar cfe JsonEditor-fat.jar JsonEditor *
+          jar cfe ../JsonEditor-fat.jar JsonEditor *
           cd ..
 
       # 3️⃣ Create custom runtime image
