@@ -26,19 +26,15 @@ jobs:
           mkdir build
           javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar with all dependencies
+      # 2️⃣ Create fat jar using jar xf (safe merge)
       - name: Create fat jar
         run: |
           mkdir fat-jar
           Copy-Item build\* fat-jar\ -Recurse
-
-          # Extract Jackson jars into fat-jar folder
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          [System.IO.Compression.ZipFile]::ExtractToDirectory("jackson-core.jar","fat-jar")
-          [System.IO.Compression.ZipFile]::ExtractToDirectory("jackson-databind.jar","fat-jar")
-          [System.IO.Compression.ZipFile]::ExtractToDirectory("jackson-annotations.jar","fat-jar")
-
           cd fat-jar
+          jar xf ..\jackson-core.jar
+          jar xf ..\jackson-databind.jar
+          jar xf ..\jackson-annotations.jar
           jar cfe JsonEditor-fat.jar JsonEditor *
           Move-Item -Force JsonEditor-fat.jar ..
 
@@ -105,10 +101,10 @@ jobs:
         run: |
           mkdir fat-jar
           cp -R build/* fat-jar/
-          jar xf jackson-core.jar
-          jar xf jackson-databind.jar
-          jar xf jackson-annotations.jar
           cd fat-jar
+          jar xf ../jackson-core.jar
+          jar xf ../jackson-databind.jar
+          jar xf ../jackson-annotations.jar
           jar cfe JsonEditor-fat.jar JsonEditor *
           mv JsonEditor-fat.jar ../
 
