@@ -4,59 +4,64 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
+  pull_request:
 
 jobs:
   build:
     runs-on: windows-latest
 
-    env:
-      JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.8-9.0\x64
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Setup Java
-      uses: actions/setup-java@v3
-      with:
-        java-version: '21'
-        distribution: 'temurin'
+      - name: Set up Java 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 21
 
-    - name: Create build folder
-      run: mkdir build
+      - name: Build Fat Jar
+        shell: pwsh
+        run: |
+          $buildDir = "build"
+          $fatJarDir = "fat-jar"
+          $tempDir = "$env:TEMP\jartemp"
 
-    - name: Compile Java sources
-      run: javac -d build -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" src/jsoneditor/*.java
+          # Clean old folders
+          Remove-Item -Recurse -Force $buildDir,$fatJarDir -ErrorAction SilentlyContinue
+          mkdir $buildDir
+          mkdir $fatJarDir
 
-    - name: Create fat jar folder
-      run: mkdir fat-jar
+          # Compile Java sources
+          $sourceFile = "jsoneditor/JsonEditor.java"
+          $classpath = ".;jsoneditor/jackson-core.jar;jsoneditor/jackson-databind.jar;jsoneditor/jackson-annotations.jar"
+          javac -d $buildDir -cp $classpath $sourceFile
 
-    - name: Copy compiled classes to fat-jar
-      run: Copy-Item build\* fat-jar\ -Recurse
+          # Copy compiled classes to fat-jar folder
+          Copy-Item "$buildDir/*" $fatJarDir -Recurse
 
-    - name: Extract dependencies into fat-jar
-      run: |
-        $jars = "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar"
-        foreach ($jar in $jars) {
-            Write-Host "Extracting $jar"
-            $tempDir = "$env:TEMP\jartemp"
-            Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
-            mkdir $tempDir
-            [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
-            # Copy only .class files and flatten folder structure
-            Get-ChildItem $tempDir -Recurse -Include *.class | Copy-Item -Destination fat-jar -Force
-            Remove-Item -Recurse -Force $tempDir
-        }
+          # Extract Jackson dependencies into fat-jar folder (skip META-INF)
+          foreach ($jar in "jsoneditor/jackson-core.jar","jsoneditor/jackson-databind.jar","jsoneditor/jackson-annotations.jar") {
+              Write-Host "Extracting $jar"
+              Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
+              mkdir $tempDir
+              [System.IO.Compression.ZipFile]::ExtractToDirectory($jar, $tempDir)
+              Get-ChildItem $tempDir -Recurse | Where-Object { $_.PSIsContainer -eq $false -and $_.FullName -notmatch "META-INF" } |
+                  Copy-Item -Destination $fatJarDir -Force
+              Remove-Item -Recurse -Force $tempDir
+          }
 
-    - name: Build final fat jar
-      run: |
-        cd fat-jar
-        jar cfe ../JsonEditor-fat.jar jsoneditor.JsonEditor *
-        cd ..
+          # Create final fat jar with main class
+          cd $fatJarDir
+          jar cfe ../JsonEditor-fat.jar jsoneditor.JsonEditor *
+          cd ..
+          Write-Host "Fat jar created: JsonEditor-fat.jar"
 
-    - name: List fat jar contents
-      run: jar tf JsonEditor-fat.jar
+      - name: List files
+        run: dir
 
-    - name: Test running fat jar
-      run: java -jar JsonEditor-fat.jar
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: JsonEditor-fat-jar
+          path: JsonEditor-fat.jar
