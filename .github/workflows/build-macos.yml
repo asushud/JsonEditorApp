@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 jobs:
-  # 🪟 Windows Build (standalone EXE with embedded JRE)
+  # 🪟 Windows Build (standalone app with embedded JRE)
   build-windows:
     runs-on: windows-latest
 
@@ -20,13 +20,14 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # 1️⃣ Compile Java files
+      # 1️⃣ Compile all Java files (multiple mains)
       - name: Compile Java files
+        shell: pwsh
         run: |
           mkdir build
           javac -cp ".;jackson-core.jar;jackson-databind.jar;jackson-annotations.jar" -d build *.java
 
-      # 2️⃣ Create fat jar (safe for Windows long paths)
+      # 2️⃣ Create fat jar with all dependencies
       - name: Create fat jar
         shell: pwsh
         run: |
@@ -36,15 +37,18 @@ jobs:
           Copy-Item jackson-databind.jar fat-jar\
           Copy-Item jackson-annotations.jar fat-jar\
           cd fat-jar
-          jar xf jackson-core.jar
-          jar xf jackson-databind.jar
-          jar xf jackson-annotations.jar
-          jar cfe JsonEditor-fat.jar JsonEditor .
+          # Extract all dependency jars
+          foreach ($jar in "jackson-core.jar","jackson-databind.jar","jackson-annotations.jar") {
+            jar xf $jar
+          }
+          # Create final fat jar
+          jar cfe JsonEditor-fat.jar JsonEditor -C . .
           Move-Item -Force JsonEditor-fat.jar ..
           cd ..
 
       # 3️⃣ Create custom runtime image
       - name: Create runtime image
+        shell: pwsh
         run: |
           jlink `
             --module-path "$env:JAVA_HOME\jmods" `
@@ -53,6 +57,7 @@ jobs:
 
       # 4️⃣ Prepare input folder for jpackage
       - name: Prepare input folder
+        shell: pwsh
         run: |
           Remove-Item -Recurse -Force build-input -ErrorAction SilentlyContinue
           mkdir build-input
@@ -60,10 +65,12 @@ jobs:
 
       # 5️⃣ Clean output folder
       - name: Clean output folder
+        shell: pwsh
         run: Remove-Item -Recurse -Force output -ErrorAction SilentlyContinue
 
       # 6️⃣ Package Windows EXE
       - name: Package Windows EXE
+        shell: pwsh
         run: |
           jpackage `
             --name JsonEditor `
@@ -82,7 +89,6 @@ jobs:
         with:
           name: JsonEditor-Windows
           path: output/JsonEditor
-
 
   # 🍎 macOS Build
   build-macos:
@@ -105,14 +111,20 @@ jobs:
       # 2️⃣ Create fat jar
       - name: Create fat jar
         run: |
-          mkdir fat-jar
+          mkdir -p fat-jar
           cp -R build/* fat-jar/
-          jar xf jackson-core.jar
-          jar xf jackson-databind.jar
-          jar xf jackson-annotations.jar
+          cp jackson-core.jar fat-jar/
+          cp jackson-databind.jar fat-jar/
+          cp jackson-annotations.jar fat-jar/
           cd fat-jar
-          jar cfe JsonEditor-fat.jar JsonEditor *
+          # Extract all dependency jars
+          for jarfile in jackson-core.jar jackson-databind.jar jackson-annotations.jar; do
+            jar xf $jarfile
+          done
+          # Create final fat jar
+          jar cfe JsonEditor-fat.jar JsonEditor -C . .
           mv JsonEditor-fat.jar ../
+          cd ..
 
       # 3️⃣ Clean output folder
       - name: Clean output folder
