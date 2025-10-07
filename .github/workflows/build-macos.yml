@@ -1,48 +1,75 @@
-name: Build JsonEditor Native Image (macOS)
+name: Build and Sign macOS Native Image
 
 on:
-  workflow_dispatch:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  build-macos:
+  build:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 1️⃣ Set up GraalVM 17
-      - name: Set up GraalVM
+      - name: Setup GraalVM 17
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: 17
-          distribution: graalvm-community
-          components: native-image
+          java-version: '17'
+          distribution: 'graalvm-community'
+          components: 'native-image'
 
-      # 2️⃣ Compile Java sources
-      - name: Compile Java files
+      - name: Build JAR
         run: |
           javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" JsonEditor.java
-
-      # 3️⃣ Create Fat JAR
-      - name: Create Fat JAR
-        run: |
           jar cfe JsonEditor-fat.jar JsonEditor *.class
 
-      # 4️⃣ Build Native Image
-      - name: Build Native Executable with GraalVM
+      - name: Build Native Image
         run: |
           native-image -cp "JsonEditor-fat.jar:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" JsonEditor
+          mkdir dist
+          mv JsonEditor dist/jsoneditor
 
-      # 5️⃣ List build output
-      - name: Verify output
-        run: ls -lh
+      # Import Developer Certificate
+      - name: Import signing certificate
+        run: |
+          echo "$MAC_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "" build.keychain
+          security import certificate.p12 -k build.keychain -P "$MAC_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -s build.keychain
+          security unlock-keychain -p "" build.keychain
+        env:
+          MAC_CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
+          MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
 
-      # 6️⃣ Upload artifact (native binary)
-      - name: Upload macOS binary
+      # Code sign
+      - name: Code sign the binary
+        run: |
+          codesign --deep --force --verify --verbose \
+            --sign "Developer ID Application: YOUR_NAME (${APPLE_TEAM_ID})" \
+            dist/jsoneditor
+
+      # Zip for notarization
+      - name: Zip binary
+        run: cd dist && zip -r jsoneditor.zip jsoneditor
+
+      # Notarize
+      - name: Notarize app
+        run: |
+          xcrun notarytool submit dist/jsoneditor.zip \
+            --apple-id "${{ secrets.APPLE_ID }}" \
+            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
+            --wait
+
+      # Staple ticket
+      - name: Staple notarization ticket
+        run: xcrun stapler staple dist/jsoneditor
+
+      # Upload signed binary
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JsonEditor-macOS
-          path: JsonEditor
+          name: jsoneditor-macos
+          path: dist/jsoneditor.zip
