@@ -1,4 +1,4 @@
-name: Build JsonEditor Native macOS App
+name: Build JsonEditor Native Image (macOS)
 
 on:
   workflow_dispatch:
@@ -6,54 +6,43 @@ on:
     branches: [ main ]
 
 jobs:
-  build-macos-native:
+  build-macos:
     runs-on: macos-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up GraalVM JDK 21
+      # 1️⃣ Set up GraalVM 17
+      - name: Set up GraalVM
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: 21
-          distribution: graalvm
+          java-version: 17
+          distribution: graalvm-community
           components: native-image
 
-      - name: Verify Java and GraalVM
+      # 2️⃣ Compile Java sources
+      - name: Compile Java files
         run: |
-          java -version
-          gu --version
+          javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" JsonEditor.java
 
-      # 🧩 Compile Java sources
-      - name: Compile Java
+      # 3️⃣ Create Fat JAR
+      - name: Create Fat JAR
         run: |
-          mkdir -p build
-          javac -cp "jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
+          jar cfe JsonEditor-fat.jar JsonEditor *.class
 
-      # 📦 Create a jar
-      - name: Create jar
+      # 4️⃣ Build Native Image
+      - name: Build Native Executable with GraalVM
         run: |
-          jar cfe JsonEditor.jar JsonEditor -C build .
+          native-image -cp "JsonEditor-fat.jar:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" JsonEditor
 
-      # 🚀 Build native image
-      - name: Build native executable using GraalVM
-        run: |
-          native-image \
-            --no-fallback \
-            --initialize-at-build-time \
-            -jar JsonEditor.jar \
-            JsonEditor
+      # 5️⃣ List build output
+      - name: Verify output
+        run: ls -lh
 
-      # 📁 Prepare output
-      - name: Prepare artifact
-        run: |
-          mkdir -p output
-          mv JsonEditor output/
-
-      # ⬆️ Upload artifact
+      # 6️⃣ Upload artifact (native binary)
       - name: Upload macOS binary
         uses: actions/upload-artifact@v4
         with:
-          name: JsonEditor-macOS-Native
-          path: output/
+          name: JsonEditor-macOS
+          path: JsonEditor
