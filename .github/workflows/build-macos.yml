@@ -10,9 +10,11 @@ jobs:
     runs-on: macos-latest
 
     steps:
+      # 1️⃣ Checkout repository
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # 2️⃣ Setup GraalVM 17 CE with native-image
       - name: Setup GraalVM 17
         uses: graalvm/setup-graalvm@v1
         with:
@@ -20,27 +22,29 @@ jobs:
           distribution: 'graalvm-community'
           components: 'native-image'
 
+      # 3️⃣ Compile Java files & create fat jar
       - name: Build JAR
         run: |
-          mkdir -p build
-          javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build JsonEditor.java
-          jar cfe JsonEditor-fat.jar JsonEditor -C build .
+          javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" JsonEditor.java
+          jar cfe JsonEditor-fat.jar JsonEditor *.class
 
+      # 4️⃣ Build native image with GUI support
       - name: Build Native Image (.app)
         run: |
           mkdir -p dist/JsonEditor.app/Contents/MacOS
           native-image \
             --no-fallback \
-            --enable-all-security-services \
             -H:Name=JsonEditor \
             -H:ReflectionConfigurationFiles=reflect-config.json \
             --initialize-at-run-time=javax.swing,java.awt \
+            --enable-all-security-services \
             -cp "JsonEditor-fat.jar:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" \
             --module-path $JAVA_HOME/jmods \
             --add-modules java.desktop \
             JsonEditor
           mv JsonEditor dist/JsonEditor.app/Contents/MacOS/
 
+      # 5️⃣ Create Info.plist for the .app bundle
       - name: Create Info.plist
         run: |
           mkdir -p dist/JsonEditor.app/Contents
@@ -59,11 +63,13 @@ jobs:
           </plist>
           EOF
 
+      # 6️⃣ Zip the .app for download
       - name: Zip .app for release
         run: |
           cd dist
           zip -r JsonEditor-macos.zip JsonEditor.app
 
+      # 7️⃣ Upload artifact
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
