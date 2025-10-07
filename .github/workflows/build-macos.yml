@@ -1,4 +1,4 @@
-name: Build macOS Native Image (.app)
+name: Build macOS app (jlink + jpackage)
 
 on:
   push:
@@ -6,72 +6,84 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-macos:
     runs-on: macos-latest
+    timeout-minutes: 60
 
     steps:
-      # 1️⃣ Checkout repository
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup GraalVM 17 CE with native-image
-      - name: Setup GraalVM 17
-        uses: graalvm/setup-graalvm@v1
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'graalvm-community'
-          components: 'native-image'
+          distribution: temurin
+          java-version: 17
 
-      # 3️⃣ Compile Java files & create fat jar
-      - name: Build JAR
-        run: |
-          javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" JsonEditor.java
-          jar cfe JsonEditor-fat.jar JsonEditor *.class
+      - name: Show Java
+        run: java -version
 
-      # 4️⃣ Build native image with GUI support
-      - name: Build Native Image (.app)
+      - name: Compile Java files
         run: |
-          mkdir -p dist/JsonEditor.app/Contents/MacOS
-          native-image \
-            --no-fallback \
-            -H:Name=JsonEditor \
-            -H:ReflectionConfigurationFiles=reflect-config.json \
-            --initialize-at-run-time=javax.swing,java.awt \
-            --enable-all-security-services \
-            -cp "JsonEditor-fat.jar:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" \
+          rm -rf build
+          mkdir -p build
+          # compile all .java into build directory (adjust path if your sources are in a folder)
+          javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
+
+      - name: Create main JAR and prepare input folder
+        run: |
+          mkdir -p input
+          # create the main jar (entry point JsonEditor - adjust if your main class is packaged)
+          jar cfe JsonEditor.jar JsonEditor -C build .
+          # copy jar and dependency jars into input (jpackage will include all jars in input on the classpath)
+          cp JsonEditor.jar input/
+          cp jackson-core.jar input/ || true
+          cp jackson-databind.jar input/ || true
+          cp jackson-annotations.jar input/ || true
+
+      - name: Create custom runtime image with jlink (include java.desktop)
+        run: |
+          rm -rf custom-jre
+          # include modules that GUI apps commonly need (add other modules if your app uses them)
+          $JAVA_HOME/bin/jlink \
             --module-path $JAVA_HOME/jmods \
-            --add-modules java.desktop \
-            JsonEditor
-          mv JsonEditor dist/JsonEditor.app/Contents/MacOS/
+            --add-modules java.base,java.logging,java.xml,java.desktop \
+            --output custom-jre \
+            --compress=2 \
+            --no-header-files \
+            --no-man-pages
 
-      # 5️⃣ Create Info.plist for the .app bundle
-      - name: Create Info.plist
+      - name: Run jpackage to create .dmg and .app
         run: |
-          mkdir -p dist/JsonEditor.app/Contents
-          cat > dist/JsonEditor.app/Contents/Info.plist <<'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleName</key><string>JsonEditor</string>
-            <key>CFBundleDisplayName</key><string>JsonEditor</string>
-            <key>CFBundleIdentifier</key><string>com.example.jsoneditor</string>
-            <key>CFBundleVersion</key><string>1.0</string>
-            <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleExecutable</key><string>JsonEditor</string>
-          </dict>
-          </plist>
-          EOF
+          mkdir -p pkg-output
+          # create a DMG (also produces JsonEditor.app in pkg-output)
+          $JAVA_HOME/bin/jpackage \
+            --name JsonEditor \
+            --input input \
+            --main-jar JsonEditor.jar \
+            --main-class JsonEditor \
+            --type dmg \
+            --app-version 1.0 \
+            --runtime-image custom-jre \
+            --dest pkg-output \
+            --verbose
 
-      # 6️⃣ Zip the .app for download
-      - name: Zip .app for release
+      - name: List outputs
+        run: ls -la pkg-output || true
+
+      - name: Zip the produced app and dmg for artifacts
         run: |
-          cd dist
-          zip -r JsonEditor-macos.zip JsonEditor.app
+          mkdir -p artifacts
+          if [ -d "pkg-output/JsonEditor.app" ]; then
+            ditto -c -k --sequesterRsrc --keepParent "pkg-output/JsonEditor.app" "artifacts/JsonEditor.app.zip"
+          fi
+          if [ -f "pkg-output/JsonEditor-1.0.dmg" ]; then
+            cp "pkg-output/JsonEditor-1.0.dmg" artifacts/
+          fi
+          ls -la artifacts
 
-      # 7️⃣ Upload artifact
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: JsonEditor-macos
-          path: dist/JsonEditor-macos.zip
+          name: JsonEditor-macOS
+          path: artifacts
