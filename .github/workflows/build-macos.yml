@@ -22,17 +22,23 @@ jobs:
 
       - name: Build JAR
         run: |
-          javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" JsonEditor.java
-          jar cfe JsonEditor-fat.jar JsonEditor *.class
+          mkdir -p build
+          javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build JsonEditor.java
+          jar cfe JsonEditor-fat.jar JsonEditor -C build .
 
-      - name: Build Native Image
+      - name: Build Native Image (.app)
         run: |
+          mkdir -p dist/JsonEditor.app/Contents/MacOS
           native-image \
+            --no-fallback \
+            --enable-all-security-services \
             -H:Name=JsonEditor \
             -H:ReflectionConfigurationFiles=reflect-config.json \
+            --initialize-at-run-time=javax.swing,java.awt \
             -cp "JsonEditor-fat.jar:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" \
+            --module-path $JAVA_HOME/jmods \
+            --add-modules java.desktop \
             JsonEditor
-          mkdir -p dist/JsonEditor.app/Contents/MacOS
           mv JsonEditor dist/JsonEditor.app/Contents/MacOS/
 
       - name: Create Info.plist
