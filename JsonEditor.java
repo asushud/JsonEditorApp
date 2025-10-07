@@ -1,4 +1,3 @@
-package jsoneditor;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.*;
 import javax.swing.*;
