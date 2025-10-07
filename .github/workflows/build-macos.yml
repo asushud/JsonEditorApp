@@ -1,4 +1,4 @@
-name: Build and Sign macOS Native Image
+name: Build and Sign macOS Native Image (.app)
 
 on:
   push:
@@ -27,37 +27,63 @@ jobs:
 
       - name: Build Native Image
         run: |
-          native-image -cp "JsonEditor-fat.jar:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" JsonEditor
-          mkdir dist
-          mv JsonEditor dist/jsoneditor
+          native-image \
+            --no-fallback \
+            --enable-http \
+            --enable-https \
+            --initialize-at-build-time \
+            --report-unsupported-elements-at-runtime \
+            -H:Name=JsonEditor \
+            -H:ReflectionConfigurationFiles=reflect-config.json \
+            -cp "JsonEditor-fat.jar:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" JsonEditor
+
+          mkdir -p dist/JsonEditor.app/Contents/MacOS
+          mv JsonEditor dist/JsonEditor.app/Contents/MacOS/JsonEditor
+          echo "APPL????" > dist/JsonEditor.app/Contents/PkgInfo
+          mkdir -p dist/JsonEditor.app/Contents/Resources
+          cp icon.icns dist/JsonEditor.app/Contents/Resources/ 2>/dev/null || true
+          cat <<EOF > dist/JsonEditor.app/Contents/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key> <string>JsonEditor</string>
+            <key>CFBundleExecutable</key> <string>JsonEditor</string>
+            <key>CFBundleIdentifier</key> <string>com.yourdomain.jsoneditor</string>
+            <key>CFBundleVersion</key> <string>1.0</string>
+            <key>CFBundlePackageType</key> <string>APPL</string>
+          </dict>
+          </plist>
+          EOF
 
       # Import Developer Certificate
       - name: Import signing certificate
-        run: |
-          echo "$MAC_CERTIFICATE" | base64 --decode > certificate.p12
-          security create-keychain -p "" build.keychain
-          security import certificate.p12 -k build.keychain -P "$MAC_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security list-keychains -s build.keychain
-          security unlock-keychain -p "" build.keychain
         env:
           MAC_CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
           MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$MAC_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p github build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p github build.keychain
+          security import certificate.p12 -k ~/Library/Keychains/build.keychain -P "$MAC_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k github build.keychain
 
       # Code sign
-      - name: Code sign the binary
+      - name: Code sign .app
         run: |
-          codesign --deep --force --verify --verbose \
+          codesign --deep --force --options runtime --verify --verbose \
             --sign "Developer ID Application: YOUR_NAME (${APPLE_TEAM_ID})" \
-            dist/jsoneditor
+            dist/JsonEditor.app
 
       # Zip for notarization
-      - name: Zip binary
-        run: cd dist && zip -r jsoneditor.zip jsoneditor
+      - name: Zip app
+        run: cd dist && zip -r JsonEditor.zip JsonEditor.app
 
-      # Notarize
+      # Notarize app
       - name: Notarize app
         run: |
-          xcrun notarytool submit dist/jsoneditor.zip \
+          xcrun notarytool submit dist/JsonEditor.zip \
             --apple-id "${{ secrets.APPLE_ID }}" \
             --team-id "${{ secrets.APPLE_TEAM_ID }}" \
             --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
@@ -65,11 +91,11 @@ jobs:
 
       # Staple ticket
       - name: Staple notarization ticket
-        run: xcrun stapler staple dist/jsoneditor
+        run: xcrun stapler staple dist/JsonEditor.app
 
-      # Upload signed binary
-      - name: Upload artifact
+      # Upload artifact
+      - name: Upload notarized app
         uses: actions/upload-artifact@v4
         with:
-          name: jsoneditor-macos
-          path: dist/jsoneditor.zip
+          name: JsonEditor-macos-app
+          path: dist/JsonEditor.zip
