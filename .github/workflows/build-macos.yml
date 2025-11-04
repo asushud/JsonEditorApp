@@ -1,4 +1,4 @@
-name: Build macOS app (jlink + jpackage)
+name: Build macOS app (jlink + jpackage with console)
 
 on:
   push:
@@ -43,7 +43,7 @@ jobs:
           cp jackson-core.jar jackson-databind.jar jackson-annotations.jar input/ || true
 
       # ------------------------------------------------------------
-      # ⚙️ 3. Build minimal runtime (includes java.desktop for Swing)
+      # ⚙️ 3. Create minimal runtime
       # ------------------------------------------------------------
       - name: Create custom runtime image with jlink
         run: |
@@ -57,9 +57,9 @@ jobs:
             --no-man-pages
 
       # ------------------------------------------------------------
-      # 💻 4. Package app using jpackage
+      # 💻 4. Package app (console mode)
       # ------------------------------------------------------------
-      - name: Run jpackage to create .dmg and .app
+      - name: Run jpackage to create .dmg and .app (console visible)
         run: |
           rm -rf pkg-output
           mkdir -p pkg-output
@@ -68,14 +68,22 @@ jobs:
             --input input \
             --main-jar JsonEditor.jar \
             --main-class JsonEditor \
-            --type dmg \
-            --app-version 1.0 \
+            --type app-image \
             --runtime-image custom-jre \
+            --java-options "-Dapple.awt.UIElement=false" \
+            --dest pkg-output \
+            --verbose
+
+          echo "✅ App image created. Converting to DMG..."
+          $JAVA_HOME/bin/jpackage \
+            --name JsonEditor \
+            --app-image pkg-output/JsonEditor.app \
+            --type dmg \
             --dest pkg-output \
             --verbose
 
       # ------------------------------------------------------------
-      # 🔧 5. Ensure executable bit & remove quarantine attributes
+      # 🔧 5. Ensure permissions and executable bit
       # ------------------------------------------------------------
       - name: Fix permissions inside .app bundle
         run: |
@@ -87,9 +95,9 @@ jobs:
           fi
 
       # ------------------------------------------------------------
-      # 🗜️ 6. Zip artifacts safely (preserve app metadata)
+      # 🗜️ 6. Zip artifacts safely
       # ------------------------------------------------------------
-      - name: Zip the produced app and dmg for artifacts
+      - name: Zip app and dmg for artifacts
         run: |
           mkdir -p artifacts
           if [ -d "pkg-output/JsonEditor.app" ]; then
