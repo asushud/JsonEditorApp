@@ -1,4 +1,4 @@
-name: Build macOS app (JsonEditor)
+name: Build macOS app (JsonEditor fixed)
 
 on:
   push:
@@ -23,29 +23,23 @@ jobs:
       - name: Show Java version
         run: java -version
 
-      # ------------------------------------------------------------
-      # 🧱 1. Compile Java sources
-      # ------------------------------------------------------------
+      # 1️⃣ Compile sources
       - name: Compile Java files
         run: |
           rm -rf build
           mkdir -p build
           javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
 
-      # ------------------------------------------------------------
-      # 📦 2. Prepare JARs for packaging
-      # ------------------------------------------------------------
-      - name: Create JAR and input folder
+      # 2️⃣ Create JAR and input folder
+      - name: Create JAR and prepare input folder
         run: |
           mkdir -p input
           jar cfe JsonEditor.jar JsonEditor -C build .
           cp JsonEditor.jar input/
           cp jackson-core.jar jackson-databind.jar jackson-annotations.jar input/ || true
 
-      # ------------------------------------------------------------
-      # ⚙️ 3. Create minimal runtime image (✅ fixed output path)
-      # ------------------------------------------------------------
-      - name: Create custom runtime with jlink
+      # 3️⃣ Create runtime
+      - name: Create custom runtime image
         run: |
           rm -rf runtime
           $JAVA_HOME/bin/jlink \
@@ -56,55 +50,57 @@ jobs:
             --no-header-files \
             --no-man-pages
 
-      # ------------------------------------------------------------
-      # 💻 4. Package macOS app
-      # ------------------------------------------------------------
-      - name: Build .app and .dmg with jpackage
+      # 4️⃣ Create .app first (✅ now exists in pkg-output/)
+      - name: Create .app image with jpackage
         run: |
           rm -rf pkg-output
           mkdir -p pkg-output
           $JAVA_HOME/bin/jpackage \
+            --type app-image \
             --name JsonEditor \
             --input input \
             --main-jar JsonEditor.jar \
             --main-class JsonEditor \
-            --type dmg \
-            --app-version 1.0 \
             --runtime-image runtime \
             --java-options "-Dapple.awt.UIElement=false" \
-            --verbose \
-            --dest pkg-output
+            --dest pkg-output \
+            --verbose
 
-      # ------------------------------------------------------------
-      # 🔧 5. Fix permissions and remove quarantine
-      # ------------------------------------------------------------
-      - name: Fix executable and remove quarantine
+      # 5️⃣ Fix permissions & quarantine
+      - name: Fix permissions inside .app
         run: |
           APP_PATH="pkg-output/JsonEditor.app"
           EXEC_PATH="$APP_PATH/Contents/MacOS/JsonEditor"
+          if [ -f "$EXEC_PATH" ]; then
+            chmod +x "$EXEC_PATH"
+            xattr -cr "$APP_PATH"
+            echo "✅ Permissions fixed for $EXEC_PATH"
+          else
+            echo "⚠️ Executable not found at $EXEC_PATH"
+            echo "Directory contents:"
+            ls -R pkg-output
+            exit 1
+          fi
 
-          chmod +x "$EXEC_PATH"
-          xattr -cr "$APP_PATH"
+      # 6️⃣ Wrap .app into .dmg
+      - name: Create .dmg from .app
+        run: |
+          $JAVA_HOME/bin/jpackage \
+            --type dmg \
+            --name JsonEditor \
+            --app-image pkg-output/JsonEditor.app \
+            --dest pkg-output \
+            --verbose
 
-          echo "✅ Permissions fixed for $EXEC_PATH"
-
-      # ------------------------------------------------------------
-      # 🗜️ 6. Zip artifacts correctly (preserve app metadata)
-      # ------------------------------------------------------------
-      - name: Package .app and .dmg for artifacts
+      # 7️⃣ Zip artifacts safely
+      - name: Zip app and dmg
         run: |
           mkdir -p artifacts
-          if [ -d "pkg-output/JsonEditor.app" ]; then
-            ditto -c -k --sequesterRsrc --keepParent "pkg-output/JsonEditor.app" "artifacts/JsonEditor.app.zip"
-          fi
-          if [ -f "pkg-output/JsonEditor-1.0.dmg" ]; then
-            cp "pkg-output/JsonEditor-1.0.dmg" artifacts/
-          fi
+          ditto -c -k --sequesterRsrc --keepParent "pkg-output/JsonEditor.app" "artifacts/JsonEditor.app.zip"
+          cp pkg-output/JsonEditor-1.0.dmg artifacts/ || true
           ls -la artifacts
 
-      # ------------------------------------------------------------
-      # ☁️ 7. Upload build artifacts
-      # ------------------------------------------------------------
+      # 8️⃣ Upload build artifacts
       - name: Upload build outputs
         uses: actions/upload-artifact@v4
         with:
