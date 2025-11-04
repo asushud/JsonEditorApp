@@ -1,4 +1,4 @@
-name: Build macOS app (jlink + jpackage with console)
+name: Build macOS app (JsonEditor)
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
         run: java -version
 
       # ------------------------------------------------------------
-      # 🧱 1. Compile all Java sources
+      # 🧱 1. Compile Java sources
       # ------------------------------------------------------------
       - name: Compile Java files
         run: |
@@ -33,9 +33,9 @@ jobs:
           javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
 
       # ------------------------------------------------------------
-      # 📦 2. Create main jar & input folder
+      # 📦 2. Prepare JARs for packaging
       # ------------------------------------------------------------
-      - name: Create main JAR and prepare input folder
+      - name: Create JAR and input folder
         run: |
           mkdir -p input
           jar cfe JsonEditor.jar JsonEditor -C build .
@@ -43,23 +43,23 @@ jobs:
           cp jackson-core.jar jackson-databind.jar jackson-annotations.jar input/ || true
 
       # ------------------------------------------------------------
-      # ⚙️ 3. Create minimal runtime
+      # ⚙️ 3. Create minimal runtime image (✅ fixed output path)
       # ------------------------------------------------------------
-      - name: Create custom runtime image with jlink
+      - name: Create custom runtime with jlink
         run: |
-          rm -rf custom-jre
+          rm -rf runtime
           $JAVA_HOME/bin/jlink \
             --module-path $JAVA_HOME/jmods \
             --add-modules java.base,java.logging,java.xml,java.desktop \
-            --output custom-jre \
+            --output runtime \
             --compress=2 \
             --no-header-files \
             --no-man-pages
 
       # ------------------------------------------------------------
-      # 💻 4. Package app (console mode)
+      # 💻 4. Package macOS app
       # ------------------------------------------------------------
-      - name: Run jpackage to create .dmg and .app (console visible)
+      - name: Build .app and .dmg with jpackage
         run: |
           rm -rf pkg-output
           mkdir -p pkg-output
@@ -68,36 +68,30 @@ jobs:
             --input input \
             --main-jar JsonEditor.jar \
             --main-class JsonEditor \
-            --type app-image \
-            --runtime-image custom-jre \
-            --java-options "-Dapple.awt.UIElement=false" \
-            --dest pkg-output \
-            --verbose
-
-          echo "✅ App image created. Converting to DMG..."
-          $JAVA_HOME/bin/jpackage \
-            --name JsonEditor \
-            --app-image pkg-output/JsonEditor.app \
             --type dmg \
-            --dest pkg-output \
-            --verbose
+            --app-version 1.0 \
+            --runtime-image runtime \
+            --java-options "-Dapple.awt.UIElement=false" \
+            --verbose \
+            --dest pkg-output
 
       # ------------------------------------------------------------
-      # 🔧 5. Ensure permissions and executable bit
+      # 🔧 5. Fix permissions and remove quarantine
       # ------------------------------------------------------------
-      - name: Fix permissions inside .app bundle
+      - name: Fix executable and remove quarantine
         run: |
           APP_PATH="pkg-output/JsonEditor.app"
           EXEC_PATH="$APP_PATH/Contents/MacOS/JsonEditor"
-          if [ -f "$EXEC_PATH" ]; then
-            chmod +x "$EXEC_PATH"
-            echo "Executable bit fixed for: $EXEC_PATH"
-          fi
+
+          chmod +x "$EXEC_PATH"
+          xattr -cr "$APP_PATH"
+
+          echo "✅ Permissions fixed for $EXEC_PATH"
 
       # ------------------------------------------------------------
-      # 🗜️ 6. Zip artifacts safely
+      # 🗜️ 6. Zip artifacts correctly (preserve app metadata)
       # ------------------------------------------------------------
-      - name: Zip app and dmg for artifacts
+      - name: Package .app and .dmg for artifacts
         run: |
           mkdir -p artifacts
           if [ -d "pkg-output/JsonEditor.app" ]; then
@@ -109,7 +103,7 @@ jobs:
           ls -la artifacts
 
       # ------------------------------------------------------------
-      # ☁️ 7. Upload artifacts
+      # ☁️ 7. Upload build artifacts
       # ------------------------------------------------------------
       - name: Upload build outputs
         uses: actions/upload-artifact@v4
