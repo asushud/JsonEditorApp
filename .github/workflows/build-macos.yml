@@ -11,50 +11,44 @@ jobs:
     timeout-minutes: 60
 
     steps:
-
       - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
-
         with:
           distribution: temurin
           java-version: 17
 
-
-      - name: Show Java
+      - name: Show Java version
         run: java -version
 
+      # ------------------------------------------------------------
+      # 🧱 1. Compile all Java sources
+      # ------------------------------------------------------------
       - name: Compile Java files
         run: |
           rm -rf build
           mkdir -p build
-          # compile all .java into build directory (adjust path if your sources are in a folder)
           javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" -d build *.java
 
+      # ------------------------------------------------------------
+      # 📦 2. Create main jar & input folder
+      # ------------------------------------------------------------
       - name: Create main JAR and prepare input folder
         run: |
           mkdir -p input
-          # create the main jar (entry point JsonEditor - adjust if your main class is packaged)
           jar cfe JsonEditor.jar JsonEditor -C build .
-          # copy jar and dependency jars into input (jpackage will include all jars in input on the classpath)
           cp JsonEditor.jar input/
-          cp jackson-core.jar input/ || true
-          cp jackson-databind.jar input/ || true
-          cp jackson-annotations.jar input/ || true
+          cp jackson-core.jar jackson-databind.jar jackson-annotations.jar input/ || true
 
-      - name: Create custom runtime image with jlink (include java.desktop)
-
+      # ------------------------------------------------------------
+      # ⚙️ 3. Build minimal runtime (includes java.desktop for Swing)
+      # ------------------------------------------------------------
+      - name: Create custom runtime image with jlink
         run: |
           rm -rf custom-jre
-          # include modules that GUI apps commonly need (add other modules if your app uses them)
           $JAVA_HOME/bin/jlink \
-
-
-
-
-
             --module-path $JAVA_HOME/jmods \
             --add-modules java.base,java.logging,java.xml,java.desktop \
             --output custom-jre \
@@ -62,11 +56,13 @@ jobs:
             --no-header-files \
             --no-man-pages
 
+      # ------------------------------------------------------------
+      # 💻 4. Package app using jpackage
+      # ------------------------------------------------------------
       - name: Run jpackage to create .dmg and .app
-
         run: |
+          rm -rf pkg-output
           mkdir -p pkg-output
-          # create a DMG (also produces JsonEditor.app in pkg-output)
           $JAVA_HOME/bin/jpackage \
             --name JsonEditor \
             --input input \
@@ -78,11 +74,22 @@ jobs:
             --dest pkg-output \
             --verbose
 
-      - name: List outputs
-        run: ls -la pkg-output || true
+      # ------------------------------------------------------------
+      # 🔧 5. Ensure executable bit & remove quarantine attributes
+      # ------------------------------------------------------------
+      - name: Fix permissions inside .app bundle
+        run: |
+          APP_PATH="pkg-output/JsonEditor.app"
+          EXEC_PATH="$APP_PATH/Contents/MacOS/JsonEditor"
+          if [ -f "$EXEC_PATH" ]; then
+            chmod +x "$EXEC_PATH"
+            echo "Executable bit fixed for: $EXEC_PATH"
+          fi
 
+      # ------------------------------------------------------------
+      # 🗜️ 6. Zip artifacts safely (preserve app metadata)
+      # ------------------------------------------------------------
       - name: Zip the produced app and dmg for artifacts
-
         run: |
           mkdir -p artifacts
           if [ -d "pkg-output/JsonEditor.app" ]; then
@@ -93,8 +100,10 @@ jobs:
           fi
           ls -la artifacts
 
-      - name: Upload artifacts
-
+      # ------------------------------------------------------------
+      # ☁️ 7. Upload artifacts
+      # ------------------------------------------------------------
+      - name: Upload build outputs
         uses: actions/upload-artifact@v4
         with:
           name: JsonEditor-macOS
